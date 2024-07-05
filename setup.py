@@ -20,12 +20,13 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            "tellocmd=cv1.tello1:main",
-            "tellotakeoff=cv1.tello2:main",
-            "telloland=cv1.tello3:main",
+            "tellocmd=cv1.telloyaw:main",
+            "tellotakeoff=cv1.takeoff:main",
+            "telloland=cv1.land:main",
             "telloobject=cv1.object:main",
-            "climb50=cv1.telloclimb:main",
+            "climb=cv1.telloclimb:main",
             "tonce=cv1.telloyawonce:main",
+            "fall=cv1.tellodown:main",
         ],
     },
 )
