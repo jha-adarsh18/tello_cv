@@ -1,70 +1,122 @@
 import rclpy
 from rclpy.node import Node
+from sensor_msgs.msg import Image
+from geometry_msgs.msg import Twist
+from cv_bridge import CvBridge
 import cv2
-from ultralytics import YOLO
-from djitellopy import Tello
-import pygame
-from PIL import Image
 import numpy as np
+from ultralytics import YOLO
+import cvzone
+
+# Initialize YOLO model for object detection
+model = YOLO("yolov8n.pt")  # Updated to use the uploaded file path
+classNames = ["person", "bicycle", "car", "motorbike", "aeroplane", "bus", "train", "truck", "boat",
+              "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
+              "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
+              "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat",
+              "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+              "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli",
+              "carrot", "hot dog", "pizza", "donut", "cake", "chair", "sofa", "pottedplant", "bed",
+              "diningtable", "toilet", "tvmonitor", "laptop", "mouse", "remote", "keyboard", "cell phone",
+              "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+              "teddy bear", "hair drier", "toothbrush"
+              ]
 
 class ObjectDetectionNode(Node):
     def __init__(self):
         super().__init__('object_detection_node')
-        self.model = YOLO('/home/adarsh/Documents/runs/detect/train3/weights/best_openvino_model')
-        self.tello = Tello()
-        self.tello.connect()
-        self.get_logger().info(f"Battery level: {self.tello.get_battery()}%")
-        self.tello.streamon()
+        self.bridge = CvBridge()
+        self.prev_frame_time = 0
 
-        pygame.init()
-        self.screen = pygame.display.set_mode((960, 720))
-        pygame.display.set_caption("Tello Camera Feed")
+        self.depth_sub = self.create_subscription(
+            Image,
+            '/image_raw',
+            self.callback,
+            10)
 
-        self.timer = self.create_timer(1.0/30.0, self.timer_callback)
+        # Publisher for cmd_vel
+        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.get_logger().info('Object Detection Node has been started.')
 
-    def timer_callback(self):
-        frame_read = self.tello.get_frame_read()
-        frame = frame_read.frame
+    def callback(self, img_msg):
+        img = self.bridge.imgmsg_to_cv2(img_msg, desired_encoding='passthrough')
+        # Object detection
+        results = model(img, stream=True)
 
-        if frame is None:
-            self.get_logger().warn("No frame captured from Tello camera.")
-            return
-
-        frame_pil = Image.fromarray(frame)
-        frame_rgb = frame_pil.convert("RGB")
-        frame_rgb = frame_rgb.transpose(Image.FLIP_LEFT_RIGHT)
-        frame_rgb_np = np.array(frame_rgb)
-
-        results = self.model(frame_rgb_np)
-        for result in results:
-            boxes = result.boxes
+        for r in results:
+            boxes = r.boxes
             for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0]
-                conf = box.conf[0]
-                cls = box.cls[0]
-                cv2.rectangle(frame_rgb_np, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                label = f"{self.model.names[int(cls)]} {conf:.2f}"
-                cv2.putText(frame_rgb_np, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                # Class Name
+                cls_idx = int(box.cls[0])
+                detected_class = classNames[cls_idx]
 
-        frame_surface = pygame.surfarray.make_surface(frame_rgb_np)
-        frame_surface = pygame.transform.rotate(frame_surface, -90)
-        self.screen.blit(frame_surface, (0, 0))
-        pygame.display.update()
+                # Check if the detected class is "bottle"
+                if detected_class == 'bottle':
+                    # Bounding Box
+                    x1, y1, x2, y2 = box.xyxy[0]
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    w, h = x2 - x1, y2 - y1
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_q):
-                self.tello.streamoff()
-                self.tello.end()
-                pygame.quit()
-                rclpy.shutdown()
+                    # Crop the region within the bounding box for color detection
+                    cropped_region = img[y1:y2, x1:x2]
+                    # Calculate center coordinates
+                    center_x = (x1 + x2) / 2
+                    center_y = (y1 + y2) / 2
+
+                    # Get the average color of the cropped region
+                    avg_color = np.mean(cropped_region, axis=(0, 1))
+                    b, g, r = avg_color.astype(int)
+
+                    # Draw rectangle above the bounding box with object color
+                    rect_color = (int(r), int(g), int(b))
+                    cv2.rectangle(img, (x1 + 10, y1 - 50), (x2, y1), list(rect_color), -1)
+
+                    # Display color information and set background color
+                    text = f'{detected_class}'
+                    cv2.putText(img, text, (x1 + 10, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+
+                    # Draw bounding box
+                    cvzone.cornerRect(img, (x1, y1, w, h))
+
+                    # Calculate velocity commands based on the position of the bottle
+                    twist_msg = Twist()
+                    
+                    # Example logic to control the drone based on the bottle's position
+                    if center_x < img.shape[1] / 3:
+                        twist_msg.angular.z = 0.1  # Rotate left
+                    elif center_x > 2 * img.shape[1] / 3:
+                        twist_msg.angular.z = -0.1  # Rotate right
+                    else:
+                        twist_msg.angular.z = 0.0  # Stop rotation
+
+                    if center_y < img.shape[0] / 3:
+                        twist_msg.linear.z = 0.1  # Move up
+                    elif center_y > 2 * img.shape[0] / 3:
+                        twist_msg.linear.z = -0.1  # Move down
+                    else:
+                        twist_msg.linear.z = 0.1  # Stop vertical movement
+
+                    self.cmd_vel_pub.publish(twist_msg)
+        
+        cv2.imshow("TelloCamera", img)
+        cv2.waitKey(1)
+
+    def stop(self):
+        pass  # Add any cleanup code if needed
 
 def main(args=None):
     rclpy.init(args=args)
     node = ObjectDetectionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.stop()
+        node.destroy_node()
+        rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
