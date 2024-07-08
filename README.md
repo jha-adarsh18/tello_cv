@@ -75,7 +75,7 @@ To run the various nodes, use the following commands:
   ros2 run tello_cv fall --ros-args -p move_distance_cm:=50.0
   ```
 
-- To run the object detection model with a specified model path:
+- To run the m5stack RoverC-pro detection model:
   ```bash
   ros2 run tello_cv --ros-args -p model_path:='path/to/your/model'
   ```
