@@ -9,7 +9,7 @@ class TelloNode(Node):
 
     def __init__(self):
         super().__init__('tello_node')
-        self.declare_parameter('model_path', r'C:\Users\jhaad\Downloads\best_int8_openvino_model-20240704T093940Z-001\best_int8_openvino_model')
+        self.declare_parameter('model_path','/home/adarsh/Documents/runs/detect/train3/weights/best_openvino_model')
         self.model = YOLO(self.get_parameter('model_path').get_parameter_value().string_value)
 
         self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
