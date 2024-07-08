@@ -27,6 +27,7 @@ setup(
             "climb=cv1.telloclimb:main",
             "tonce=cv1.telloyawonce:main",
             "fall=cv1.tellodown:main",
+            "rover=cv1.rover_tracking:main",
         ],
     },
 )
