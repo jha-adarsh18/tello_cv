@@ -27,11 +27,15 @@ This repository provides ROS2 nodes to control a Tello drone, including object d
     ```bash
     git clone https://github.com/jha-adarsh18/tello_cv.git
     ```
-4. Source the ROS2 workspace setup:
+4. Build the repository:
+    ```bash
+    colcon build --event-handlers console_direct+ --packages-skip tello_gazebo
+    ```
+5. Source the ROS2 workspace setup:
     ```bash
     source ~/your_ros2_workspace/install/setup.bash
     ```
-5. Source the ROS2 Foxy setup:
+6. Source the ROS2 Foxy setup:
     ```bash
     source /opt/ros/foxy/setup.bash
     ```
